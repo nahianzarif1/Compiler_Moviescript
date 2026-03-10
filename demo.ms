@@ -1,0 +1,33 @@
+OPENING_CREDITS
+SCREENPLAY
+
+CHARACTER @hero
+SCENE @intro
+SCENE @scene
+DIALOGUE @line
+
+RATING @rating <- 5 + 3
+BUDGET @budget <- 5000000
+
+GENRE_COLLECTION @genres <- {"Action","Drama"}
+
+ADD_TO @genres "Comedy"
+
+SCENE_IF (@rating GREATER_THAN 8.0) FRAME
+AWARD "Excellent Film"
+ENDFRAME
+OTHERWISE FRAME
+REVIEW "Needs Improvement"
+ENDFRAME
+
+FOR_EACH_SCENE IN @movie REEL
+ANALYZE @scene
+PRINT "Scene analyzed"
+ENDREEL
+
+WHILE (@rating RISING) TAKE
+BUILD_SUSPENSE
+ENDTAKE
+
+ENDSCREENPLAY
+FINAL_CREDITS

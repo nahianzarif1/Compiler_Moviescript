@@ -1,0 +1,15 @@
+WHOLE @budget <- 50
+SIGNAL @flag <- 1
+
+@rating IS 8.5
+@genre IS_NOT "Horror"
+@budget GREATER_THAN 50
+@rating GREATER_EQUAL 7.0
+@runtime LESS_THAN 120
+
+DIALOGUE @message <- "Hello world.
+
+LISTEN -> @score
+WHILE (@tension RISING) TAKE
+DIALOGUE @message <- "Hello world."
+ENDTAKE
