@@ -4,6 +4,35 @@
 #include "semantic.h"
 #include "symbol_table.h"
 
+typedef struct FunctionSymbol {
+    char name[64];
+    char returnType[32];
+    int paramCount;
+    char paramTypes[10][32];
+    ASTNode* node;
+    struct FunctionSymbol* next;
+} FunctionSymbol;
+
+static FunctionSymbol* functionTable = NULL;
+
+static FunctionSymbol* lookupFunction(const char* name)
+{
+    FunctionSymbol* current = functionTable;
+    while (current != NULL) {
+        if (strcmp(current->name, name) == 0) {
+            return current;
+        }
+        current = current->next;
+    }
+    return NULL;
+}
+
+ASTNode* lookupFunctionNode(const char* name)
+{
+    FunctionSymbol* symbol = lookupFunction(name);
+    return symbol != NULL ? symbol->node : NULL;
+}
+
 static int isQuotedString(const char* text)
 {
     size_t len = text != NULL ? strlen(text) : 0;
@@ -86,6 +115,11 @@ static const char* inferExpressionType(ASTNode* node)
         }
     }
 
+    if (node->type == NODE_CALL && node->name != NULL) {
+        FunctionSymbol* symbol = lookupFunction(node->name);
+        return symbol != NULL ? symbol->returnType : "UNKNOWN";
+    }
+
     return "UNKNOWN";
 }
 
@@ -95,13 +129,19 @@ static void checkDeadCode(ASTNode* condition)
         return;
     }
 
-    Symbol* symbol = condition->name != NULL ? lookupSymbol(condition->name) : NULL;
-    if (symbol == NULL) {
+    if (strcmp(condition->name, "RISING") == 0) {
         return;
     }
 
-    if (strcmp(symbol->type, "RATING") == 0 && isNumericLiteral(condition->value) && numericValue(condition->value) > 10.0) {
-        printf("Warning at line %d: dead code detected because RATING %s cannot be greater than 10\n", condition->line, condition->name);
+    if (condition->left != NULL && condition->right != NULL &&
+        condition->left->type == NODE_VALUE && condition->left->name != NULL &&
+        condition->right->type == NODE_VALUE && condition->right->value != NULL) {
+        Symbol* symbol = lookupSymbol(condition->left->name);
+        if (symbol != NULL && strcmp(symbol->type, "RATING") == 0 &&
+            isNumericLiteral(condition->right->value) && numericValue(condition->right->value) > 10.0) {
+            printf("Warning at line %d: dead code detected because RATING %s cannot be greater than 10\n",
+                   condition->line, condition->left->name);
+        }
     }
 }
 
@@ -113,6 +153,7 @@ void foldConstants(ASTNode* node)
 
     foldConstants(node->left);
     foldConstants(node->right);
+    foldConstants(node->elseBranch);
     foldConstants(node->next);
 
     if (node->type == NODE_BINARY_OP && node->left != NULL && node->right != NULL &&
@@ -173,9 +214,10 @@ void checkIdentifierUsage(ASTNode* node)
         }
     }
 
-    if (node->type == NODE_CONDITION && node->name != NULL) {
-        if (lookupSymbol(node->name) == NULL) {
-            printf("Semantic Error at line %d: undefined variable %s\n", node->line, node->name);
+    if (node->type == NODE_CONDITION && node->left != NULL) {
+        checkIdentifierUsage(node->left);
+        if (node->right != NULL) {
+            checkIdentifierUsage(node->right);
         }
     }
 
@@ -188,6 +230,12 @@ void checkIdentifierUsage(ASTNode* node)
     if (node->type == NODE_COLLECTION_ADD && node->name != NULL) {
         if (lookupSymbol(node->name) == NULL) {
             printf("Semantic Error at line %d: undefined variable %s\n", node->line, node->name);
+        }
+    }
+
+    if (node->type == NODE_CALL && node->name != NULL) {
+        if (lookupFunction(node->name) == NULL) {
+            printf("Semantic Error at line %d: undefined function %s\n", node->line, node->name);
         }
     }
 }
@@ -266,13 +314,59 @@ void semanticCheck(ASTNode* node)
         checkDeadCode(node->left);
     }
 
+    if (node->type == NODE_FUNCTION) {
+        if (lookupFunction(node->name) != NULL) {
+            printf("Semantic Error at line %d: duplicate function %s\n", node->line, node->name);
+        } else {
+            FunctionSymbol* function = (FunctionSymbol*)malloc(sizeof(FunctionSymbol));
+            if (function == NULL) {
+                fprintf(stderr, "Fatal Error: unable to allocate function symbol\n");
+                exit(EXIT_FAILURE);
+            }
+            strncpy(function->name, node->name, sizeof(function->name) - 1);
+            function->name[sizeof(function->name) - 1] = '\0';
+            strncpy(function->returnType, node->value != NULL ? node->value : "UNKNOWN", sizeof(function->returnType) - 1);
+            function->returnType[sizeof(function->returnType) - 1] = '\0';
+            function->paramCount = 0;
+            function->node = node;
+            function->next = functionTable;
+
+            ASTNode* param = node->left;
+            while (param != NULL && function->paramCount < 10) {
+                strncpy(function->paramTypes[function->paramCount], param->value != NULL ? param->value : "UNKNOWN", sizeof(function->paramTypes[function->paramCount]) - 1);
+                function->paramTypes[function->paramCount][sizeof(function->paramTypes[function->paramCount]) - 1] = '\0';
+                function->paramCount++;
+                param = param->next;
+            }
+
+            functionTable = function;
+        }
+    }
+
     if (node->type != NODE_DECL) {
         if (node->type == NODE_ASSIGN || node->type == NODE_IF || node->type == NODE_WHILE || node->type == NODE_FOR || node->type == NODE_COLLECTION || node->type == NODE_COLLECTION_ADD || node->type == NODE_ACTION || node->type == NODE_CONDITION) {
             checkIdentifierUsage(node);
         }
     }
 
+    if (node->type == NODE_CALL && node->name != NULL) {
+        FunctionSymbol* function = lookupFunction(node->name);
+        if (function != NULL) {
+            int argCount = 0;
+            ASTNode* arg = node->left;
+            while (arg != NULL) {
+                argCount++;
+                arg = arg->next;
+            }
+            if (argCount != function->paramCount) {
+                printf("Semantic Error at line %d: function %s expects %d args but got %d\n",
+                       node->line, node->name, function->paramCount, argCount);
+            }
+        }
+    }
+
     semanticCheck(node->left);
     semanticCheck(node->right);
+    semanticCheck(node->elseBranch);
     semanticCheck(node->next);
 }

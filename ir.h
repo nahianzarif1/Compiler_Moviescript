@@ -5,5 +5,6 @@
 
 void generateIR(ASTNode* node);
 void generateCFG(ASTNode* node);
+void generateFunctionIndex(ASTNode* node);
 
 #endif

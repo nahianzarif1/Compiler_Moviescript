@@ -6,5 +6,6 @@
 void foldConstants(ASTNode* node);
 void checkIdentifierUsage(ASTNode* node);
 void semanticCheck(ASTNode* node);
+ASTNode* lookupFunctionNode(const char* name);
 
 #endif

@@ -36,6 +36,7 @@ ASTNode* createNodeWithLine(NodeType type, const char* name, const char* value, 
 	node->line = line;
 	node->left = NULL;
 	node->right = NULL;
+	node->elseBranch = NULL;
 	node->next = NULL;
 
 	return node;
@@ -101,6 +102,10 @@ const char* nodeTypeName(NodeType type)
 		case NODE_FOR: return "FOREACH";
 		case NODE_COLLECTION: return "COLLECTION";
 		case NODE_COLLECTION_ADD: return "COLLECTION_ADD";
+		case NODE_FUNCTION: return "FUNCTION";
+		case NODE_PARAM: return "PARAM";
+		case NODE_RETURN: return "RETURN";
+		case NODE_CALL: return "CALL";
 		case NODE_ACTION: return "ACTION";
 		case NODE_VALUE: return "VALUE";
 		default: return "UNKNOWN";
@@ -132,6 +137,11 @@ void printAST(ASTNode* node, int level)
 
 	printAST(node->left, level + 1);
 	printAST(node->right, level + 1);
+	if (node->elseBranch != NULL) {
+		printIndent(level + 1);
+		printf("ELSE\n");
+		printAST(node->elseBranch, level + 2);
+	}
 	printAST(node->next, level);
 }
 void freeAST(ASTNode* node)
@@ -142,6 +152,7 @@ void freeAST(ASTNode* node)
 
 	freeAST(node->left);
 	freeAST(node->right);
+	freeAST(node->elseBranch);
 	freeAST(node->next);
 	free(node->name);
 	free(node->value);

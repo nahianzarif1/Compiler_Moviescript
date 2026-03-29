@@ -18,7 +18,7 @@ static char* ms_strdup(const char* text)
 }
 %}
 
-LOWER      [a-z]
+LOWER      [a-zA-Z]
 DIGIT      [0-9]
 ID         @{LOWER}({LOWER}|{DIGIT}|_)*
 NUMBER     {DIGIT}+(\.{DIGIT}+)?
@@ -55,6 +55,11 @@ STRING     \"([^\"\n])*\"
 
 "GENRE_COLLECTION"     { return GENRE_COLLECTION; }
 "ADD_TO"               { return ADD_TO; }
+
+"FUNCTION"             { return FUNCTION; }
+"RETURNS"              { return RETURNS; }
+"RETURN"               { return RETURN; }
+"ENDFUNCTION"          { return ENDFUNCTION; }
 
 "AWARD"                { return AWARD; }
 "REVIEW"               { return REVIEW; }

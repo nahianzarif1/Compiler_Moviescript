@@ -14,6 +14,10 @@ typedef enum {
 	NODE_FOR,
 	NODE_COLLECTION,
 	NODE_COLLECTION_ADD,
+	NODE_FUNCTION,
+	NODE_PARAM,
+	NODE_RETURN,
+	NODE_CALL,
 	NODE_ACTION,
 	NODE_VALUE
 } NodeType;
@@ -25,6 +29,7 @@ typedef struct ASTNode {
 	int line;
 	struct ASTNode* left;
 	struct ASTNode* right;
+	struct ASTNode* elseBranch;
 	struct ASTNode* next;
 } ASTNode;
 

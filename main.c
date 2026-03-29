@@ -26,6 +26,9 @@ int main()
     printf("\n===== INTERMEDIATE CODE =====\n");
     generateIR(root);
 
+    printf("\n===== FUNCTION INDEX =====\n");
+    generateFunctionIndex(root);
+
     printf("\n===== CONTROL FLOW GRAPH =====\n");
     generateCFG(root);
 

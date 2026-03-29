@@ -36,6 +36,7 @@ Program Output
 - Dead-code warning for impossible `RATING > 10` checks
 - Three-address style IR output
 - CFG printing for control-flow constructs
+- Function declarations, calls, and returns
 
 ## Build
 
@@ -55,4 +56,5 @@ Show the compiler stages in this order:
 3. Semantic analysis messages
 4. IR
 5. CFG
-6. Interpreter output
+6. Function index
+7. Interpreter output

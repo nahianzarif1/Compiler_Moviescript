@@ -28,6 +28,8 @@ int yylex(void);
 
 %token GENRE_COLLECTION ADD_TO
 
+%token FUNCTION RETURNS RETURN ENDFUNCTION
+
 %token AWARD REVIEW ANALYZE PRINT BUILD_SUSPENSE ENTER_STAGE
 
 %token SUCCESS FAILURE BLOCKBUSTER FLOP AVERAGE
@@ -45,6 +47,7 @@ int yylex(void);
 
 %type <node> program screenplay statements statement declaration assignment
 %type <node> conditional condition loop collection action expression string_list primary
+%type <node> function_decl param_list param type_spec return_stmt argument_list
 
 %left PLUS MINUS
 %left STAR SLASH
@@ -88,7 +91,62 @@ statement
     | conditional
     | loop
     | collection
+    | function_decl
+  | return_stmt
     | action
+    ;
+
+function_decl
+    : FUNCTION IDENTIFIER LPAREN param_list RPAREN RETURNS type_spec FRAME statements ENDFRAME ENDFUNCTION
+      {
+          $$ = createNodeWithLine(NODE_FUNCTION, $2, $7->value, line);
+          $$->left = $4;
+          $$->right = $9;
+      }
+    ;
+
+param_list
+    : param_list COMMA param
+      {
+          appendSibling($1, $3);
+          $$ = $1;
+      }
+    | param
+      {
+          $$ = $1;
+      }
+    |
+      {
+          $$ = NULL;
+      }
+    ;
+
+param
+    : type_spec IDENTIFIER
+      {
+          $$ = createNodeWithLine(NODE_PARAM, $2, $1->value, line);
+      }
+    ;
+
+type_spec
+    : CHARACTER
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "CHARACTER", line); }
+    | SCENE
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "SCENE", line); }
+    | DIALOGUE
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "DIALOGUE", line); }
+    | RATING
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "RATING", line); }
+    | BUDGET
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "BUDGET", line); }
+    | GENRE
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "GENRE", line); }
+    | STATUS
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "STATUS", line); }
+    | WHOLE
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "WHOLE", line); }
+    | SIGNAL
+      { $$ = createNodeWithLine(NODE_VALUE, NULL, "SIGNAL", line); }
     ;
 
 declaration
@@ -179,9 +237,30 @@ primary
       {
 	      $$ = createNodeWithLine(NODE_VALUE, $1, NULL, line);
       }
+    | IDENTIFIER LPAREN argument_list RPAREN
+      {
+          $$ = createNodeWithLine(NODE_CALL, $1, NULL, line);
+          $$->left = $3;
+      }
     | LPAREN expression RPAREN
       {
           $$ = $2;
+      }
+    ;
+
+argument_list
+    : argument_list COMMA expression
+      {
+          appendSibling($1, $3);
+          $$ = $1;
+      }
+    | expression
+      {
+          $$ = $1;
+      }
+    |
+      {
+          $$ = NULL;
       }
     ;
 
@@ -191,22 +270,21 @@ conditional
 	      $$ = createNodeWithLine(NODE_IF, NULL, NULL, line);
           $$->left = $3;
           $$->right = $6;
-          if ($6 != NULL) {
-              appendSibling($6, $10);
-          } else {
-              $$->right = $10;
-          }
+      $$->elseBranch = $10;
       }
     ;
 
 condition
-    : IDENTIFIER GREATER_THAN NUMBER
+    : expression GREATER_THAN expression
       {
-	      $$ = createNodeWithLine(NODE_CONDITION, $1, $3, line);
+	      $$ = createNodeWithLine(NODE_CONDITION, ">", NULL, line);
+          $$->left = $1;
+          $$->right = $3;
       }
     | IDENTIFIER RISING
       {
-	      $$ = createNodeWithLine(NODE_CONDITION, $1, "RISING", line);
+	      $$ = createNodeWithLine(NODE_CONDITION, "RISING", NULL, line);
+          $$->left = createNodeWithLine(NODE_VALUE, $1, NULL, line);
       }
     ;
 
@@ -250,9 +328,10 @@ string_list
     ;
 
 action
-    : PRINT STRING
+    : PRINT expression
       {
-	      $$ = createNodeWithLine(NODE_ACTION, "PRINT", $2, line);
+	      $$ = createNodeWithLine(NODE_ACTION, "PRINT", NULL, line);
+          $$->left = $2;
       }
     | AWARD STRING
       {
@@ -273,6 +352,14 @@ action
     | ENTER_STAGE
       {
 	      $$ = createNodeWithLine(NODE_ACTION, "ENTER_STAGE", NULL, line);
+      }
+    ;
+
+return_stmt
+    : RETURN expression
+      {
+          $$ = createNodeWithLine(NODE_RETURN, NULL, NULL, line);
+          $$->left = $2;
       }
     ;
 

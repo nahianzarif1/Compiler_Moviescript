@@ -41,10 +41,10 @@ static void generateConditionIR(ASTNode* node, int trueLabel, int falseLabel)
         return;
     }
 
-    if (node->value != NULL && strcmp(node->value, "RISING") == 0) {
-        printf("IF %s RISING GOTO L%d\n", valueName(node), trueLabel);
+    if (node->name != NULL && strcmp(node->name, "RISING") == 0) {
+        printf("IF %s RISING GOTO L%d\n", valueName(node->left), trueLabel);
     } else {
-        printf("IF %s > %s GOTO L%d\n", valueName(node), node->value != NULL ? node->value : "_", trueLabel);
+        printf("IF %s > %s GOTO L%d\n", valueName(node->left), valueName(node->right), trueLabel);
     }
     printf("GOTO L%d\n", falseLabel);
 }
@@ -80,9 +80,33 @@ static void generateSingleIR(ASTNode* node)
         case NODE_ACTION:
             if (node->value != NULL) {
                 printf("CALL %s, %s\n", node->name, node->value);
+            } else if (node->left != NULL && node->name != NULL && strcmp(node->name, "PRINT") == 0) {
+                printf("PRINT %s\n", valueName(node->left));
             } else {
                 printf("CALL %s\n", node->name);
             }
+            break;
+
+        case NODE_FUNCTION:
+            printf("FUNCTION %s RETURNS %s\n", node->name, node->value != NULL ? node->value : "UNKNOWN");
+            generateIRList(node->right);
+            printf("END_FUNCTION %s\n", node->name);
+            break;
+
+        case NODE_RETURN:
+            if (node->left != NULL && node->left->type == NODE_BINARY_OP) {
+                int temp = nextTemp();
+                printf("t%d = %s %s %s\n", temp, valueName(node->left->left), node->left->name != NULL ? node->left->name : "?", valueName(node->left->right));
+                printf("RETURN t%d\n", temp);
+            } else if (node->left != NULL && node->left->type == NODE_CALL) {
+                printf("RETURN %s\n", node->left->name != NULL ? node->left->name : "<call>");
+            } else {
+                printf("RETURN %s\n", valueName(node->left));
+            }
+            break;
+
+        case NODE_CALL:
+            printf("CALL %s\n", node->name != NULL ? node->name : "<anonymous>");
             break;
 
         case NODE_COLLECTION: {
@@ -114,10 +138,7 @@ static void generateSingleIR(ASTNode* node)
             generateIRList(node->right);
             printf("GOTO L%d\n", endLabel);
             printf("L%d:\n", falseLabel);
-            if (node->right != NULL) {
-                ASTNode* elseBranch = node->right->next;
-                generateIRList(elseBranch);
-            }
+            generateIRList(node->elseBranch);
             printf("L%d:\n", endLabel);
             break;
         }
@@ -214,9 +235,7 @@ static void generateCFGNode(ASTNode* node, int currentBlock)
             printBlockEdge(currentBlock, elseBlock, "false");
             generateCFGList(node->right, thenBlock);
             printBlockEdge(thenBlock, joinBlock, NULL);
-            if (node->right != NULL && node->right->next != NULL) {
-                generateCFGList(node->right->next, elseBlock);
-            }
+            generateCFGList(node->elseBranch, elseBlock);
             printBlockEdge(elseBlock, joinBlock, NULL);
             break;
         }
@@ -229,6 +248,12 @@ static void generateCFGNode(ASTNode* node, int currentBlock)
             printBlockEdge(currentBlock, exitBlock, "false");
             generateCFGList(node->right, bodyBlock);
             printBlockEdge(bodyBlock, currentBlock, "loop");
+            break;
+        }
+
+        case NODE_FUNCTION: {
+            printf("B%d: FUNCTION %s\n", currentBlock, node->name != NULL ? node->name : "<anonymous>");
+            generateCFGList(node->right, currentBlock);
             break;
         }
 
@@ -270,4 +295,20 @@ void generateCFG(ASTNode* node)
     }
 
     generateCFGList(node, nextBlockId());
+}
+
+void generateFunctionIndex(ASTNode* node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    if (node->type == NODE_FUNCTION) {
+        printf("FUNCTION %s (%s)\n", node->name != NULL ? node->name : "<anonymous>", node->value != NULL ? node->value : "UNKNOWN");
+    }
+
+    generateFunctionIndex(node->left);
+    generateFunctionIndex(node->right);
+    generateFunctionIndex(node->elseBranch);
+    generateFunctionIndex(node->next);
 }

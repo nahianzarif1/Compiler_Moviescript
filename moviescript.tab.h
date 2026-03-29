@@ -65,37 +65,41 @@
      ENDTAKE = 281,
      GENRE_COLLECTION = 282,
      ADD_TO = 283,
-     AWARD = 284,
-     REVIEW = 285,
-     ANALYZE = 286,
-     PRINT = 287,
-     BUILD_SUSPENSE = 288,
-     ENTER_STAGE = 289,
-     SUCCESS = 290,
-     FAILURE = 291,
-     BLOCKBUSTER = 292,
-     FLOP = 293,
-     AVERAGE = 294,
-     RISING = 295,
-     ASSIGN = 296,
-     PLUS = 297,
-     MINUS = 298,
-     STAR = 299,
-     SLASH = 300,
-     GREATER_THAN = 301,
-     GREATER_EQUAL = 302,
-     LESS_THAN = 303,
-     LESS_EQUAL = 304,
-     IS = 305,
-     IS_NOT = 306,
-     IDENTIFIER = 307,
-     NUMBER = 308,
-     STRING = 309,
-     LPAREN = 310,
-     RPAREN = 311,
-     LBRACE = 312,
-     RBRACE = 313,
-     COMMA = 314
+     FUNCTION = 284,
+     RETURNS = 285,
+     RETURN = 286,
+     ENDFUNCTION = 287,
+     AWARD = 288,
+     REVIEW = 289,
+     ANALYZE = 290,
+     PRINT = 291,
+     BUILD_SUSPENSE = 292,
+     ENTER_STAGE = 293,
+     SUCCESS = 294,
+     FAILURE = 295,
+     BLOCKBUSTER = 296,
+     FLOP = 297,
+     AVERAGE = 298,
+     RISING = 299,
+     ASSIGN = 300,
+     PLUS = 301,
+     MINUS = 302,
+     STAR = 303,
+     SLASH = 304,
+     GREATER_THAN = 305,
+     GREATER_EQUAL = 306,
+     LESS_THAN = 307,
+     LESS_EQUAL = 308,
+     IS = 309,
+     IS_NOT = 310,
+     IDENTIFIER = 311,
+     NUMBER = 312,
+     STRING = 313,
+     LPAREN = 314,
+     RPAREN = 315,
+     LBRACE = 316,
+     RBRACE = 317,
+     COMMA = 318
    };
 #endif
 /* Tokens.  */
@@ -125,37 +129,41 @@
 #define ENDTAKE 281
 #define GENRE_COLLECTION 282
 #define ADD_TO 283
-#define AWARD 284
-#define REVIEW 285
-#define ANALYZE 286
-#define PRINT 287
-#define BUILD_SUSPENSE 288
-#define ENTER_STAGE 289
-#define SUCCESS 290
-#define FAILURE 291
-#define BLOCKBUSTER 292
-#define FLOP 293
-#define AVERAGE 294
-#define RISING 295
-#define ASSIGN 296
-#define PLUS 297
-#define MINUS 298
-#define STAR 299
-#define SLASH 300
-#define GREATER_THAN 301
-#define GREATER_EQUAL 302
-#define LESS_THAN 303
-#define LESS_EQUAL 304
-#define IS 305
-#define IS_NOT 306
-#define IDENTIFIER 307
-#define NUMBER 308
-#define STRING 309
-#define LPAREN 310
-#define RPAREN 311
-#define LBRACE 312
-#define RBRACE 313
-#define COMMA 314
+#define FUNCTION 284
+#define RETURNS 285
+#define RETURN 286
+#define ENDFUNCTION 287
+#define AWARD 288
+#define REVIEW 289
+#define ANALYZE 290
+#define PRINT 291
+#define BUILD_SUSPENSE 292
+#define ENTER_STAGE 293
+#define SUCCESS 294
+#define FAILURE 295
+#define BLOCKBUSTER 296
+#define FLOP 297
+#define AVERAGE 298
+#define RISING 299
+#define ASSIGN 300
+#define PLUS 301
+#define MINUS 302
+#define STAR 303
+#define SLASH 304
+#define GREATER_THAN 305
+#define GREATER_EQUAL 306
+#define LESS_THAN 307
+#define LESS_EQUAL 308
+#define IS 309
+#define IS_NOT 310
+#define IDENTIFIER 311
+#define NUMBER 312
+#define STRING 313
+#define LPAREN 314
+#define RPAREN 315
+#define LBRACE 316
+#define RBRACE 317
+#define COMMA 318
 
 
 
@@ -168,7 +176,7 @@ typedef union YYSTYPE
     char* str;
 }
 /* Line 1529 of yacc.c.  */
-#line 172 "moviescript.tab.h"
+#line 180 "moviescript.tab.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1

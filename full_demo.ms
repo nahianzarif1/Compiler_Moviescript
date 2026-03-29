@@ -14,10 +14,12 @@ RATING @rating <- @scoreMovie(5 + 3)
 BUDGET @budget <- 5000000
 
 GENRE_COLLECTION @genres <- {"Action","Drama"}
-
 ADD_TO @genres "Comedy"
 
-SCENE_IF (@rating GREATER_THAN 8.0) FRAME
+PRINT @rating
+PRINT "Rating printed above"
+
+SCENE_IF (@rating GREATER_THAN 8) FRAME
 AWARD "Excellent Film"
 ENDFRAME
 OTHERWISE FRAME
@@ -29,8 +31,10 @@ ANALYZE @scene
 PRINT "Scene analyzed"
 ENDREEL
 
-WHILE (@rating RISING) TAKE
+WHILE (@rating GREATER_THAN 8) TAKE
+@rating <- 7
 BUILD_SUSPENSE
+PRINT @rating
 ENDTAKE
 
 ENDSCREENPLAY
