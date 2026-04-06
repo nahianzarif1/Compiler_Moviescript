@@ -13,3 +13,18 @@ LISTEN -> @score
 WHILE (@tension RISING) TAKE
 DIALOGUE @message <- "Hello world."
 ENDTAKE
+
+
+make clean
+make all
+./moviescript < demo1_basic.ms
+./moviescript < demo2_functions.ms
+./moviescript < demo3_control.ms
+./moviescript < demo4_collections_foreach.ms
+./moviescript < demo5_full_features.ms_strdup
+
+generateCFG(root);
+
+generateIR(root);
+printAST(root,0);
+printSymbolTable();

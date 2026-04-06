@@ -1,0 +1,28 @@
+OPENING_CREDITS
+SCREENPLAY
+
+CHARACTER @hero
+SCENE @intro
+DIALOGUE @line
+BUDGET @budget <- 5000000
+RATING @rating <- 9
+
+FUNCTION @bump(RATING @rating) RETURNS RATING FRAME
+RETURN @rating + 1
+ENDFRAME ENDFUNCTION
+
+PRINT @budget
+PRINT "Budget shown"
+
+SCENE_IF (@rating GREATER_THAN 11) FRAME
+REVIEW "Impossible branch"  
+ENDFRAME
+OTHERWISE FRAME
+AWARD "Audience Favorite"
+ENDFRAME
+
+RATING @finalScore <- @bump(@rating)
+PRINT @finalScore
+
+ENDSCREENPLAY
+FINAL_CREDITS

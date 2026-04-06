@@ -1,0 +1,14 @@
+OPENING_CREDITS
+SCREENPLAY
+
+SCENE @scene
+GENRE_COLLECTION @genres <- {"Action","Drama"}
+ADD_TO @genres "Comedy"
+
+FOR_EACH_SCENE IN @movie REEL
+ANALYZE @scene
+PRINT "Scene analyzed"
+ENDREEL
+
+ENDSCREENPLAY
+FINAL_CREDITS

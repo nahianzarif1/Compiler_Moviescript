@@ -1,0 +1,11 @@
+OPENING_CREDITS
+SCREENPLAY
+
+CHARACTER @hero
+RATING @score <- 2 + 3
+
+PRINT @score
+PRINT "Hello from MovieScript"
+
+ENDSCREENPLAY
+FINAL_CREDITS
