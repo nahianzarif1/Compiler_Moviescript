@@ -1,314 +1,184 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include "diagnostic.h"
 #include "ir.h"
 
-static int tempCounter = 0;
-static int labelCounter = 0;
+static int tempCounter;
+static int labelCounter;
+static int blockCounter;
 
-static int nextTemp(void)
+static char* temporary(void)
 {
-    return tempCounter++;
+    char text[32]; snprintf(text, sizeof(text), "t%d", tempCounter++); return msCopy(text);
 }
 
-static int nextLabel(void)
+static char* expressionIR(ASTNode* node)
 {
-    return labelCounter++;
-}
-
-static const char* valueName(ASTNode* node)
-{
-    if (node == NULL) {
-        return "_";
+    if (!node) return msCopy("_");
+    if (node->type == NODE_VALUE) return msCopy(node->name ? node->name : node->value);
+    char* result = temporary();
+    if (node->type == NODE_CALL || node->type == NODE_BUILTIN) {
+        /* Keep argument temporaries stable across nested calls. */
+        int count = 0;
+        for (ASTNode* arg = node->left; arg; arg = arg->next) ++count;
+        char** args = msAlloc((count + 1UL) * sizeof(char*));
+        int i = 0;
+        for (ASTNode* arg = node->left; arg; arg = arg->next) args[i++] = expressionIR(arg);
+        for (i = 0; i < count; ++i) { printf("ARG %s\n", args[i]); free(args[i]); }
+        printf("%s = %s %s, %d\n", result, node->type == NODE_CALL ? "CALL" : "BUILTIN", node->name, count);
+        free(args); return result;
     }
-
-    if (node->name != NULL) {
-        return node->name;
-    }
-
-    if (node->value != NULL) {
-        return node->value;
-    }
-
-    return "_";
-}
-
-static void generateIRList(ASTNode* node);
-static void generateCFGList(ASTNode* node, int parentBlock);
-
-static void generateConditionIR(ASTNode* node, int trueLabel, int falseLabel)
-{
-    if (node == NULL) {
-        return;
-    }
-
-    if (node->name != NULL && strcmp(node->name, "RISING") == 0) {
-        printf("IF %s RISING GOTO L%d\n", valueName(node->left), trueLabel);
+    char* left = expressionIR(node->left);
+    if (node->type == NODE_UNARY_OP) printf("%s = %s %s\n", result, node->name, left);
+    else if (!strcmp(node->name, "AND") || !strcmp(node->name, "OR")) {
+        int skip = labelCounter++, end = labelCounter++;
+        printf("IF %s == %s GOTO L%d\n", left, !strcmp(node->name, "AND") ? "FALSE" : "TRUE", skip);
+        char* right = expressionIR(node->right);
+        printf("%s = %s\nGOTO L%d\nL%d:\n%s = %s\nL%d:\n", result, right, end, skip, result, !strcmp(node->name, "AND") ? "FALSE" : "TRUE", end);
+        free(right);
     } else {
-        printf("IF %s > %s GOTO L%d\n", valueName(node->left), valueName(node->right), trueLabel);
+        char* right = expressionIR(node->right);
+        printf("%s = %s %s %s\n", result, left, node->name, right); free(right);
     }
-    printf("GOTO L%d\n", falseLabel);
+    free(left); return result;
 }
 
-static void generateSingleIR(ASTNode* node)
+static void irList(ASTNode* node)
 {
-    if (node == NULL) {
-        return;
-    }
-
-    switch (node->type) {
-        case NODE_DECL:
-            if (node->left != NULL) {
-                printf("DECL %s %s = %s\n", node->value, node->name, valueName(node->left));
-            } else {
-                printf("DECL %s %s\n", node->value, node->name);
-            }
-            break;
-
-        case NODE_ASSIGN: {
-            int temp = nextTemp();
-            printf("t%d = %s\n", temp, valueName(node->left));
-            printf("%s = t%d\n", node->name, temp);
-            break;
-        }
-
-        case NODE_BINARY_OP: {
-            int temp = nextTemp();
-            printf("t%d = %s %s %s\n", temp, valueName(node->left), node->name != NULL ? node->name : "?", valueName(node->right));
-            break;
-        }
-
-        case NODE_ACTION:
-            if (node->value != NULL) {
-                printf("CALL %s, %s\n", node->name, node->value);
-            } else if (node->left != NULL && node->name != NULL && strcmp(node->name, "PRINT") == 0) {
-                printf("PRINT %s\n", valueName(node->left));
-            } else {
-                printf("CALL %s\n", node->name);
-            }
-            break;
-
-        case NODE_FUNCTION:
-            printf("FUNCTION %s RETURNS %s\n", node->name, node->value != NULL ? node->value : "UNKNOWN");
-            generateIRList(node->right);
-            printf("END_FUNCTION %s\n", node->name);
-            break;
-
-        case NODE_RETURN:
-            if (node->left != NULL && node->left->type == NODE_BINARY_OP) {
-                int temp = nextTemp();
-                printf("t%d = %s %s %s\n", temp, valueName(node->left->left), node->left->name != NULL ? node->left->name : "?", valueName(node->left->right));
-                printf("RETURN t%d\n", temp);
-            } else if (node->left != NULL && node->left->type == NODE_CALL) {
-                printf("RETURN %s\n", node->left->name != NULL ? node->left->name : "<call>");
-            } else {
-                printf("RETURN %s\n", valueName(node->left));
-            }
-            break;
-
-        case NODE_CALL:
-            printf("CALL %s\n", node->name != NULL ? node->name : "<anonymous>");
-            break;
-
-        case NODE_COLLECTION: {
-            printf("COLLECTION %s = { ", node->name);
-            ASTNode* item = node->left;
-            int first = 1;
-            while (item != NULL) {
-                if (!first) {
-                    printf(", ");
+    for (; node; node = node->next) {
+        switch (node->type) {
+            case NODE_DECL:
+            case NODE_ASSIGN: {
+                if (node->type == NODE_DECL) printf("DECL %s %s\n", node->value, node->name);
+                if (node->left) {
+                    char* expr = expressionIR(node->left);
+                    printf("CHECK_STORE %s, %s\n", node->name, expr); free(expr);
                 }
-                printf("%s", valueName(item));
-                first = 0;
-                item = item->next;
+                break;
             }
-            printf(" }\n");
-            break;
+            case NODE_COLLECTION:
+                printf("COLLECTION %s = {", node->name);
+                for (ASTNode* item = node->left; item; item = item->next) printf("%s%s", item == node->left ? "" : ", ", item->value);
+                puts("}"); break;
+            case NODE_COLLECTION_ADD: {
+                char* value = expressionIR(node->left); printf("ADD_TO %s, %s\n", node->name, value); free(value); break;
+            }
+            case NODE_FUNCTION:
+                printf("FUNCTION %s RETURNS %s\n", node->name, node->value);
+                for (ASTNode* p = node->left; p; p = p->next) printf("CHECK_PARAM %s %s\n", p->value, p->name);
+                irList(node->right); printf("END_FUNCTION %s\n", node->name); break;
+            case NODE_RETURN: {
+                char* value = expressionIR(node->left); printf("CHECK_RETURN %s\n", value); free(value); break;
+            }
+            case NODE_CALL: { char* value = expressionIR(node); free(value); break; }
+            case NODE_ACTION:
+                if (node->value && !strcmp(node->value, "ANALYZE")) printf("ANALYZE %s\n", node->name);
+                else if (node->left) {
+                    char* value = expressionIR(node->left);
+                    printf("%s %s", node->name, value);
+                    if (node->value) printf(", %s", node->value);
+                    putchar('\n'); free(value);
+                } else printf("%s\n", node->name);
+                break;
+            case NODE_IF: {
+                int other = labelCounter++, end = labelCounter++;
+                char* condition = expressionIR(node->left);
+                printf("IF_FALSE %s GOTO L%d\nSCOPE_BEGIN\n", condition, other); free(condition);
+                irList(node->right);
+                printf("SCOPE_END\nGOTO L%d\nL%d:\nSCOPE_BEGIN\n", end, other);
+                irList(node->elseBranch); printf("SCOPE_END\nL%d:\n", end); break;
+            }
+            case NODE_WHILE: {
+                int start = labelCounter++, end = labelCounter++;
+                printf("L%d:\n", start);
+                char* condition = expressionIR(node->left);
+                printf("IF_FALSE %s GOTO L%d\nSCOPE_BEGIN\n", condition, end); free(condition);
+                irList(node->right); printf("SCOPE_END\nGOTO L%d\nL%d:\n", start, end); break;
+            }
+            case NODE_FOR: {
+                int start = labelCounter++, end = labelCounter++;
+                char* iterator = temporary();
+                printf("%s = ITER_SNAPSHOT %s\nL%d:\nIF_DONE %s GOTO L%d\nSCOPE_BEGIN\n", iterator, node->name, start, iterator, end);
+                if (node->value) printf("GENRE %s = CURRENT %s\n", node->value, iterator);
+                irList(node->right); printf("SCOPE_END\nNEXT %s\nGOTO L%d\nL%d:\n", iterator, start, end); free(iterator); break;
+            }
+            default: break;
         }
-
-        case NODE_COLLECTION_ADD:
-            printf("ADD_TO %s, %s\n", node->name, node->value != NULL ? node->value : "_");
-            break;
-
-        case NODE_IF: {
-            int trueLabel = nextLabel();
-            int falseLabel = nextLabel();
-            int endLabel = nextLabel();
-            generateConditionIR(node->left, trueLabel, falseLabel);
-            printf("L%d:\n", trueLabel);
-            generateIRList(node->right);
-            printf("GOTO L%d\n", endLabel);
-            printf("L%d:\n", falseLabel);
-            generateIRList(node->elseBranch);
-            printf("L%d:\n", endLabel);
-            break;
-        }
-
-        case NODE_WHILE: {
-            int startLabel = nextLabel();
-            int bodyLabel = nextLabel();
-            int endLabel = nextLabel();
-            printf("L%d:\n", startLabel);
-            generateConditionIR(node->left, bodyLabel, endLabel);
-            printf("L%d:\n", bodyLabel);
-            generateIRList(node->right);
-            printf("GOTO L%d\n", startLabel);
-            printf("L%d:\n", endLabel);
-            break;
-        }
-
-        case NODE_FOR: {
-            int loopLabel = nextLabel();
-            int endLabel = nextLabel();
-            printf("ITER %s\n", node->name != NULL ? node->name : "_");
-            printf("L%d:\n", loopLabel);
-            generateIRList(node->right);
-            printf("NEXT %s\n", node->name != NULL ? node->name : "_");
-            printf("IF_MORE %s GOTO L%d\n", node->name != NULL ? node->name : "_", loopLabel);
-            printf("L%d:\n", endLabel);
-            break;
-        }
-
-        default:
-            break;
     }
 }
 
-static void generateIRList(ASTNode* node)
+static ASTNode* statements(ASTNode* root)
 {
-    ASTNode* current = node;
-    while (current != NULL) {
-        generateSingleIR(current);
-        current = current->next;
-    }
+    return root && root->type == NODE_PROGRAM && root->left ? root->left->left : root;
 }
 
-void generateIR(ASTNode* node)
+void generateIR(ASTNode* root) { tempCounter = labelCounter = 0; irList(statements(root)); }
+
+static int block(void) { return blockCounter++; }
+static void edge(int from, int to, const char* label)
 {
-    tempCounter = 0;
-    labelCounter = 0;
-
-    if (node == NULL) {
-        return;
-    }
-
-    if (node->type == NODE_PROGRAM && node->left != NULL) {
-        generateIR(node->left);
-        return;
-    }
-
-    if (node->type == NODE_SCREENPLAY) {
-        generateIRList(node->left);
-        return;
-    }
-
-    generateIRList(node);
+    printf("B%d -> B%d", from, to);
+    if (label) printf(" [%s]", label);
+    putchar('\n');
 }
 
-static int nextBlockId(void)
+/* Return the actual fall-through block; -1 means the path returned. */
+static int cfgList(ASTNode* node, int entry)
 {
-    static int blockCounter = 0;
-    return blockCounter++;
-}
-
-static void printBlockEdge(int from, int to, const char* label)
-{
-    if (label != NULL) {
-        printf("B%d -> B%d [%s]\n", from, to, label);
-    } else {
-        printf("B%d -> B%d\n", from, to);
-    }
-}
-
-static void generateCFGNode(ASTNode* node, int currentBlock)
-{
-    if (node == NULL) {
-        return;
-    }
-
-    switch (node->type) {
-        case NODE_IF: {
-            int thenBlock = nextBlockId();
-            int elseBlock = nextBlockId();
-            int joinBlock = nextBlockId();
-            printf("B%d: IF %s\n", currentBlock, node->left != NULL ? valueName(node->left) : "condition");
-            printBlockEdge(currentBlock, thenBlock, "true");
-            printBlockEdge(currentBlock, elseBlock, "false");
-            generateCFGList(node->right, thenBlock);
-            printBlockEdge(thenBlock, joinBlock, NULL);
-            generateCFGList(node->elseBranch, elseBlock);
-            printBlockEdge(elseBlock, joinBlock, NULL);
-            break;
+    int current = entry;
+    for (; node; node = node->next) {
+        if (node->type == NODE_FUNCTION) continue;
+        if (current < 0) break;
+        if (node->type == NODE_IF) {
+            printf("B%d: IF [line %d]\n", current, node->line);
+            int yes = block(), no = block();
+            edge(current, yes, "true"); edge(current, no, "false");
+            int yesEnd = cfgList(node->right, yes), noEnd = cfgList(node->elseBranch, no);
+            if (yesEnd < 0 && noEnd < 0) current = -1;
+            else {
+                current = block();
+                if (yesEnd >= 0) edge(yesEnd, current, NULL);
+                if (noEnd >= 0) edge(noEnd, current, NULL);
+            }
+        } else if (node->type == NODE_WHILE || node->type == NODE_FOR) {
+            printf("B%d: %s [line %d]\n", current, nodeTypeName(node->type), node->line);
+            int body = block(), exit = block();
+            edge(current, body, node->type == NODE_FOR ? "item available" : "true");
+            edge(current, exit, node->type == NODE_FOR ? "exhausted" : "false");
+            int tail = cfgList(node->right, body);
+            if (tail >= 0) edge(tail, current, "loop");
+            current = exit;
+        } else {
+            printf("B%d: %s [line %d]\n", current, nodeTypeName(node->type), node->line);
+            if (node->type == NODE_RETURN) current = -1;
+            else {
+                int next = block(); edge(current, next, NULL); current = next;
+            }
         }
+    }
+    if (current >= 0) printf("B%d: fall-through\n", current);
+    return current;
+}
 
-        case NODE_WHILE: {
-            int bodyBlock = nextBlockId();
-            int exitBlock = nextBlockId();
-            printf("B%d: WHILE %s\n", currentBlock, node->left != NULL ? valueName(node->left) : "condition");
-            printBlockEdge(currentBlock, bodyBlock, "true");
-            printBlockEdge(currentBlock, exitBlock, "false");
-            generateCFGList(node->right, bodyBlock);
-            printBlockEdge(bodyBlock, currentBlock, "loop");
-            break;
+void generateCFG(ASTNode* root)
+{
+    blockCounter = 0;
+    ASTNode* list = statements(root);
+    int entry = block(); printf("B%d: screenplay entry\n", entry); cfgList(list, entry);
+    for (ASTNode* n = list; n; n = n->next) {
+        if (n->type == NODE_FUNCTION) {
+            entry = block(); printf("B%d: function %s entry\n", entry, n->name); cfgList(n->right, entry);
         }
-
-        case NODE_FUNCTION: {
-            printf("B%d: FUNCTION %s\n", currentBlock, node->name != NULL ? node->name : "<anonymous>");
-            generateCFGList(node->right, currentBlock);
-            break;
-        }
-
-        default:
-            printf("B%d: %s\n", currentBlock, nodeTypeName(node->type));
-            break;
     }
 }
 
-static void generateCFGList(ASTNode* node, int parentBlock)
+void generateFunctionIndex(ASTNode* root)
 {
-    ASTNode* current = node;
-    int activeBlock = parentBlock;
-    while (current != NULL) {
-        generateCFGNode(current, activeBlock);
-        if (current->next != NULL) {
-            int nextBlock = nextBlockId();
-            printBlockEdge(activeBlock, nextBlock, NULL);
-            activeBlock = nextBlock;
-        }
-        current = current->next;
+    for (ASTNode* n = statements(root); n; n = n->next) {
+        if (n->type != NODE_FUNCTION) continue;
+        printf("%s(", n->name);
+        for (ASTNode* p = n->left; p; p = p->next) printf("%s%s %s", p == n->left ? "" : ", ", p->value, p->name);
+        printf(") RETURNS %s [line %d]\n", n->value, n->line);
     }
-}
-
-void generateCFG(ASTNode* node)
-{
-    if (node == NULL) {
-        return;
-    }
-
-    if (node->type == NODE_PROGRAM && node->left != NULL) {
-        generateCFG(node->left);
-        return;
-    }
-
-    if (node->type == NODE_SCREENPLAY) {
-        generateCFGList(node->left, nextBlockId());
-        return;
-    }
-
-    generateCFGList(node, nextBlockId());
-}
-
-void generateFunctionIndex(ASTNode* node)
-{
-    if (node == NULL) {
-        return;
-    }
-
-    if (node->type == NODE_FUNCTION) {
-        printf("FUNCTION %s (%s)\n", node->name != NULL ? node->name : "<anonymous>", node->value != NULL ? node->value : "UNKNOWN");
-    }
-
-    generateFunctionIndex(node->left);
-    generateFunctionIndex(node->right);
-    generateFunctionIndex(node->elseBranch);
-    generateFunctionIndex(node->next);
 }

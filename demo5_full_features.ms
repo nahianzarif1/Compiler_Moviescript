@@ -5,11 +5,15 @@ CHARACTER @hero
 SCENE @intro
 DIALOGUE @line
 BUDGET @budget <- 5000000
-RATING @rating <- 9
+RATING @rating <- 10
 
 FUNCTION @bump(RATING @rating) RETURNS RATING FRAME
+
 RETURN @rating + 1
 ENDFRAME ENDFUNCTION
+ 
+@rr <-@bump
+PRINT @rr
 
 PRINT @budget
 PRINT "Budget shown"

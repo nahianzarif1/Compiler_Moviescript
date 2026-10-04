@@ -1,427 +1,238 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "diagnostic.h"
 #include "interpreter.h"
+#include "limits.h"
+#include "semantic.h"
 #include "symbol_table.h"
+#include "value.h"
 
-typedef struct FunctionEntry {
-	char name[64];
-	ASTNode* node;
-	struct FunctionEntry* next;
-} FunctionEntry;
+typedef struct { int returned; Value value; } Flow;
+static unsigned long steps;
+static unsigned long stepLimit;
+static int callDepth;
+static int initialErrors;
+static const char* phase = "Runtime Error";
 
-typedef struct LocalValue {
-	char name[64];
-	char value[128];
-	struct LocalValue* next;
-} LocalValue;
-
-static FunctionEntry* functionTable = NULL;
-static LocalValue* localStack = NULL;
-
-static void pushLocalValue(const char* name, const char* value)
+static int healthy(void) { return errorCount() == initialErrors; }
+static int tick(int line)
 {
-	LocalValue* entry = (LocalValue*)malloc(sizeof(LocalValue));
-	if (entry == NULL) {
-		return;
-	}
-	strncpy(entry->name, name, sizeof(entry->name) - 1);
-	entry->name[sizeof(entry->name) - 1] = '\0';
-	strncpy(entry->value, value != NULL ? value : "", sizeof(entry->value) - 1);
-	entry->value[sizeof(entry->value) - 1] = '\0';
-	entry->next = localStack;
-	localStack = entry;
+    if (!healthy()) return 0;
+    if (steps >= stepLimit) {
+        reportError(phase, line, "execution step limit (%lu) reached; check for an infinite loop", stepLimit); return 0;
+    }
+    ++steps; return 1;
 }
 
-static void popLocalScope(int count)
+static int evaluate(ASTNode* node, Value* result);
+static Flow executeList(ASTNode* node);
+static Flow executeBlock(ASTNode* node)
 {
-	for (int i = 0; i < count && localStack != NULL; ++i) {
-		LocalValue* next = localStack->next;
-		free(localStack);
-		localStack = next;
-	}
+    enterScope(); Flow flow = executeList(node); leaveScope(); return flow;
 }
 
-static const char* lookupLocalValue(const char* name)
+static Symbol* runtimeSymbol(const char* name, int line)
 {
-	LocalValue* current = localStack;
-	while (current != NULL) {
-		if (strcmp(current->name, name) == 0) {
-			return current->value;
-		}
-		current = current->next;
-	}
-	return NULL;
+    Symbol* symbol = lookupSymbol(name);
+    if (!symbol) reportError(phase, line, "undefined variable %s", name);
+    else if (symbol->value.kind == VALUE_NONE) reportError(phase, line, "variable %s is uninitialized", name);
+    else return symbol;
+    return NULL;
 }
 
-static FunctionEntry* lookupFunction(const char* name)
+static int evaluateCall(ASTNode* node, Value* result)
 {
-	FunctionEntry* current = functionTable;
-	while (current != NULL) {
-		if (strcmp(current->name, name) == 0) {
-			return current;
-		}
-		current = current->next;
-	}
-	return NULL;
+    Value args[MS_PARAM_MAX] = {{0}};
+    int count = 0, valid = 1;
+    /* Evaluate in the caller before binding any callee parameters. */
+    for (ASTNode* arg = node->left; arg && valid; arg = arg->next) {
+        if (count >= MS_PARAM_MAX) { reportError(phase, node->line, "call exceeds %d arguments", MS_PARAM_MAX); valid = 0; break; }
+        valid = evaluate(arg, &args[count++]);
+    }
+    if (valid && node->type == NODE_BUILTIN) valid = applyBuiltin(node->name, args, count, result, node->line, phase);
+    else if (valid) {
+        ASTNode* function = lookupFunctionNode(node->name);
+        if (!function) { reportError(phase, node->line, "undefined function %s", node->name); valid = 0; }
+        else if (callDepth >= MS_CALL_DEPTH_MAX) { reportError(phase, node->line, "call depth exceeds %d", MS_CALL_DEPTH_MAX); valid = 0; }
+        else {
+            int expected = 0;
+            for (ASTNode* param = function->left; param; param = param->next) {
+                if (expected >= count || !validateValue(param->value, &args[expected], node->line, param->name, phase)) valid = 0;
+                ++expected;
+            }
+            if (expected != count) { reportError(phase, node->line, "function %s expects %d arguments, got %d", node->name, expected, count); valid = 0; }
+            if (valid) {
+                enterFunctionScope(); ++callDepth;
+                int index = 0;
+                for (ASTNode* param = function->left; param; param = param->next) {
+                    Symbol* s = insertSymbolWithLine(param->name, param->value, param->line);
+                    storeValue(s, &args[index++], node->line, phase);
+                }
+                Flow flow = executeList(function->right);
+                if (healthy()) {
+                    if (!flow.returned) { reportError(phase, node->line, "function %s did not RETURN", node->name); valid = 0; }
+                    else valid = validateValue(function->value, &flow.value, node->line, function->name, phase);
+                } else valid = 0;
+                if (valid) { *result = flow.value; flow.value = (Value){0}; }
+                freeValue(&flow.value); --callDepth; leaveScope();
+            }
+        }
+    }
+    for (int i = 0; i < count; ++i) freeValue(&args[i]);
+    return valid;
 }
 
-static void registerFunctions(ASTNode* node)
+static int evaluate(ASTNode* node, Value* result)
 {
-	if (node == NULL) {
-		return;
-	}
-
-	if (node->type == NODE_FUNCTION && node->name != NULL) {
-		FunctionEntry* entry = (FunctionEntry*)malloc(sizeof(FunctionEntry));
-		if (entry != NULL) {
-			strncpy(entry->name, node->name, sizeof(entry->name) - 1);
-			entry->name[sizeof(entry->name) - 1] = '\0';
-			entry->node = node;
-			entry->next = functionTable;
-			functionTable = entry;
-		}
-	}
-
-	registerFunctions(node->left);
-	registerFunctions(node->right);
-	registerFunctions(node->elseBranch);
-	registerFunctions(node->next);
+    *result = (Value){0};
+    if (!node || !tick(node->line)) return 0;
+    if (node->type == NODE_VALUE) {
+        if (!node->name) return parseLiteral(node->value, result, node->line, phase);
+        Symbol* s = runtimeSymbol(node->name, node->line);
+        if (!s) return 0;
+        *result = copyValue(&s->value); return 1;
+    }
+    if (node->type == NODE_CALL || node->type == NODE_BUILTIN) return evaluateCall(node, result);
+    Value a = {0}, b = {0};
+    int valid = evaluate(node->left, &a);
+    if (valid && node->type == NODE_UNARY_OP) valid = applyUnary(node->name, &a, result, node->line, phase);
+    else if (valid) {
+        if (a.kind == VALUE_SIGNAL && ((!strcmp(node->name, "AND") && !a.number) || (!strcmp(node->name, "OR") && a.number))) {
+            *result = signalValue(a.number);
+        } else {
+            valid = evaluate(node->right, &b);
+            if (valid) valid = applyBinary(node->name, &a, &b, result, node->line, phase);
+        }
+    }
+    freeValue(&a); freeValue(&b); return valid;
 }
 
-static const char* resolveNodeValue(ASTNode* node)
+static int condition(ASTNode* node)
 {
-	if (node == NULL) {
-		return NULL;
-	}
-
-	if (node->value != NULL) {
-		return node->value;
-	}
-
-	if (node->name != NULL) {
-		const char* localValue = lookupLocalValue(node->name);
-		if (localValue != NULL) {
-			return localValue;
-		}
-		Symbol* symbol = lookupSymbol(node->name);
-		if (symbol != NULL && symbol->value[0] != '\0') {
-			return symbol->value;
-		}
-	}
-
-	return NULL;
+    Value v = {0};
+    int valid = evaluate(node, &v);
+    if (valid && v.kind != VALUE_SIGNAL) { reportError(phase, node->line, "condition requires SIGNAL"); valid = 0; }
+    int truth = valid && v.number;
+    freeValue(&v); return truth;
 }
 
-static int isNumericLiteral(const char* text)
+static Flow executeStatement(ASTNode* node)
 {
-	if (text == NULL || *text == '\0') {
-		return 0;
-	}
-
-	int seenDot = 0;
-	for (const char* p = text; *p != '\0'; ++p) {
-		if (*p == '.') {
-			if (seenDot) {
-				return 0;
-			}
-			seenDot = 1;
-		} else if (*p < '0' || *p > '9') {
-			return 0;
-		}
-	}
-	return 1;
+    Flow flow = {0};
+    if (!tick(node->line)) return flow;
+    switch (node->type) {
+        case NODE_DECL: {
+            Symbol* s = insertSymbolWithLine(node->name, node->value, node->line);
+            if (node->left) { Value v = {0}; if (evaluate(node->left, &v)) storeValue(s, &v, node->line, phase); freeValue(&v); }
+            break;
+        }
+        case NODE_ASSIGN: {
+            Symbol* s = lookupSymbol(node->name);
+            if (!s) reportError(phase, node->line, "undefined variable %s", node->name);
+            else { Value v = {0}; if (evaluate(node->left, &v)) storeValue(s, &v, node->line, phase); freeValue(&v); }
+            break;
+        }
+        case NODE_COLLECTION: {
+            Symbol* s = insertSymbolWithLine(node->name, "GENRE_COLLECTION", node->line);
+            Value coll = {.kind = VALUE_COLLECTION};
+            for (ASTNode* item = node->left; item && healthy(); item = item->next) {
+                Value v = {0};
+                if (evaluate(item, &v)) appendItem(&coll, v.text, item->line, phase);
+                freeValue(&v);
+            }
+            if (healthy()) storeValue(s, &coll, node->line, phase);
+            freeValue(&coll); break;
+        }
+        case NODE_COLLECTION_ADD: {
+            Symbol* s = runtimeSymbol(node->name, node->line);
+            if (s) {
+                Value v = {0};
+                if (evaluate(node->left, &v) && validateValue("GENRE", &v, node->line, "collection item", phase)) {
+                    if (s->value.kind != VALUE_COLLECTION) reportError(phase, node->line, "ADD_TO requires GENRE_COLLECTION");
+                    else appendItem(&s->value, v.text, node->line, phase);
+                }
+                freeValue(&v);
+            }
+            break;
+        }
+        case NODE_IF:
+            if (condition(node->left)) flow = executeBlock(node->right);
+            else if (healthy()) flow = executeBlock(node->elseBranch);
+            break;
+        case NODE_WHILE:
+            while (healthy() && condition(node->left)) {
+                flow = executeBlock(node->right);
+                if (flow.returned) break;
+            }
+            break;
+        case NODE_FOR: {
+            Symbol* s = runtimeSymbol(node->name, node->line);
+            if (!s) break;
+            if (s->value.kind != VALUE_COLLECTION) { reportError(phase, node->line, "FOR_EACH_SCENE requires GENRE_COLLECTION"); break; }
+            /* Snapshot iteration is stable even if the body appends to the source. */
+            Value collection = copyValue(&s->value);
+            for (size_t i = 0; i < collection.count && healthy(); ++i) {
+                if (!tick(node->line)) break;
+                enterScope();
+                if (node->value) {
+                    Symbol* item = insertSymbolWithLine(node->value, "GENRE", node->line);
+                    Value text = textValue(collection.items[i]); storeValue(item, &text, node->line, phase); freeValue(&text);
+                }
+                flow = executeList(node->right); leaveScope();
+                if (flow.returned) break;
+            }
+            freeValue(&collection); break;
+        }
+        case NODE_FUNCTION: break;
+        case NODE_RETURN:
+            flow.returned = evaluate(node->left, &flow.value);
+            break;
+        case NODE_CALL: { Value v = {0}; evaluate(node, &v); freeValue(&v); break; }
+        case NODE_ACTION: {
+            if (node->value && !strcmp(node->value, "ANALYZE")) {
+                Symbol* s = runtimeSymbol(node->name, node->line);
+                if (s) { printf("%s (%s) = ", s->name, s->type); printValue(&s->value); putchar('\n'); }
+            } else if (!strcmp(node->name, "BUILD_SUSPENSE")) puts("Building suspense...");
+            else if (!strcmp(node->name, "ENTER_STAGE")) puts("Entering stage...");
+            else {
+                Value v = {0};
+                if (evaluate(node->left, &v)) {
+                    if (!strcmp(node->name, "ASSERT")) {
+                        if (!v.number) {
+                            Value message = {0};
+                            if (parseLiteral(node->value, &message, node->line, phase)) reportError(phase, node->line, "assertion failed: %s", message.text);
+                            freeValue(&message);
+                        }
+                    } else {
+                        if (strcmp(node->name, "PRINT")) printf("%s: ", node->name);
+                        printValue(&v); putchar('\n');
+                    }
+                }
+                freeValue(&v);
+            }
+            break;
+        }
+        default: break;
+    }
+    return flow;
 }
 
-static double evaluateNumeric(ASTNode* node, int* ok)
+static Flow executeList(ASTNode* node)
 {
-	if (node == NULL) {
-		*ok = 0;
-		return 0.0;
-	}
-
-	if (node->type == NODE_VALUE) {
-		const char* value = resolveNodeValue(node);
-		if (value != NULL && isNumericLiteral(value)) {
-			*ok = 1;
-			return strtod(value, NULL);
-		}
-		*ok = 0;
-		return 0.0;
-	}
-
-	if (node->type == NODE_BINARY_OP) {
-		int leftOk = 0;
-		int rightOk = 0;
-		double left = evaluateNumeric(node->left, &leftOk);
-		double right = evaluateNumeric(node->right, &rightOk);
-		if (!leftOk || !rightOk || node->name == NULL) {
-			*ok = 0;
-			return 0.0;
-		}
-		*ok = 1;
-		if (strcmp(node->name, "+") == 0) {
-			return left + right;
-		}
-		if (strcmp(node->name, "-") == 0) {
-			return left - right;
-		}
-		if (strcmp(node->name, "*") == 0) {
-			return left * right;
-		}
-		if (strcmp(node->name, "/") == 0) {
-			return right != 0.0 ? left / right : 0.0;
-		}
-		*ok = 0;
-		return 0.0;
-	}
-
-	if (node->type == NODE_CALL && node->name != NULL) {
-		FunctionEntry* function = lookupFunction(node->name);
-		if (function == NULL || function->node == NULL) {
-			*ok = 0;
-			return 0.0;
-		}
-		const char* value = NULL;
-		ASTNode* args = node->left;
-		ASTNode* params = function->node->left;
-		int pushCount = 0;
-		params = function->node->left;
-		while (params != NULL) {
-			const char* argValue = resolveNodeValue(args);
-			if (argValue == NULL && args != NULL) {
-				int argOk = 0;
-				double argNum = evaluateNumeric(args, &argOk);
-				if (argOk) {
-					char buffer[64];
-					snprintf(buffer, sizeof(buffer), "%.6f", argNum);
-					pushLocalValue(params->name, buffer);
-					pushCount++;
-				} else {
-					pushLocalValue(params->name, "");
-					pushCount++;
-				}
-			} else {
-				pushLocalValue(params->name, argValue != NULL ? argValue : "");
-				pushCount++;
-			}
-			params = params->next;
-			if (args != NULL) {
-				args = args->next;
-			}
-		}
-		ASTNode* returnNode = function->node->right;
-		while (returnNode != NULL && returnNode->type != NODE_RETURN) {
-			returnNode = returnNode->next;
-		}
-		if (returnNode != NULL && returnNode->left != NULL) {
-			value = resolveNodeValue(returnNode->left);
-			if (value == NULL) {
-				int returnOk = 0;
-				double returnNum = evaluateNumeric(returnNode->left, &returnOk);
-				if (returnOk) {
-					value = NULL;
-					popLocalScope(pushCount);
-					*ok = 1;
-					return returnNum;
-				}
-			}
-		}
-		popLocalScope(pushCount);
-		if (value != NULL && isNumericLiteral(value)) {
-			*ok = 1;
-			return strtod(value, NULL);
-		}
-		*ok = 0;
-		return 0.0;
-	}
-
-	*ok = 0;
-	return 0.0;
+    Flow flow = {0};
+    for (; node && healthy(); node = node->next) {
+        flow = executeStatement(node);
+        if (flow.returned) break;
+    }
+    return flow;
 }
 
-static int evaluateCondition(ASTNode* node)
+int execute(ASTNode* node, unsigned long maxSteps)
 {
-	if (node == NULL) {
-		return 0;
-	}
-
-	if (node->name != NULL && strcmp(node->name, "RISING") == 0) {
-		return 1;
-	}
-
-	int leftOk = 0;
-	int rightOk = 0;
-	double leftValue = evaluateNumeric(node->left, &leftOk);
-	double rightValue = evaluateNumeric(node->right, &rightOk);
-	if (!leftOk || !rightOk) {
-		return 0;
-	}
-
-	return leftValue > rightValue;
-}
-
-static void executeList(ASTNode* node)
-{
-	ASTNode* current = node;
-	while (current != NULL) {
-		execute(current);
-		current = current->next;
-	}
-}
-
-void execute(ASTNode* node)
-{
-if(node==NULL) return;
-
-if(functionTable == NULL)
-{
-	registerFunctions(node);
-}
-
-if (node->type == NODE_PROGRAM) {
-	executeList(node->left);
-	return;
-}
-
-if (node->type == NODE_SCREENPLAY) {
-	executeList(node->left);
-	return;
-}
-
-switch(node->type)
-{
-
-case NODE_IF:
-
-if(evaluateCondition(node->left))
-executeList(node->right);
-else if(node->elseBranch)
-executeList(node->elseBranch);
-return;
-
-case NODE_WHILE:
-
-while(evaluateCondition(node->left))
-executeList(node->right);
-return;
-
-case NODE_FOR:
-
-executeList(node->right);
-return;
-
-case NODE_FUNCTION:
-return;
-
-case NODE_RETURN:
-return;
-
-case NODE_CALL:
-{
-	int ok = 0;
-	(void) evaluateNumeric(node, &ok);
-	break;
-}
-
-case NODE_ACTION:
-
-if(strcmp(node->name,"PRINT")==0)
-{
-	if (node->left != NULL) {
-		int ok = 0;
-		double numeric = evaluateNumeric(node->left, &ok);
-		if (ok) {
-			printf("%g\n", numeric);
-		} else {
-			const char* value = resolveNodeValue(node->left);
-			if (value != NULL) {
-				printf("%s\n", value);
-			}
-		}
-	} else if (node->value != NULL) {
-		printf("%s\n", node->value);
-	}
-}
-
-else if(strcmp(node->name,"AWARD")==0)
-printf("AWARD: %s\n",node->value);
-
-else if(strcmp(node->name,"REVIEW")==0)
-printf("REVIEW: %s\n",node->value);
-
-else if(strcmp(node->name,"ANALYZE")==0)
-printf("ANALYZE: %s\n",node->value);
-
-else if(strcmp(node->name,"BUILD_SUSPENSE")==0)
-printf("Building suspense...\n");
-
-break;
-
-case NODE_ASSIGN:
-
-if(node->left)
-{
-	int ok = 0;
-	double numeric = evaluateNumeric(node->left, &ok);
-	if(ok)
-	{
-		char buffer[64];
-		snprintf(buffer, sizeof(buffer), "%.6f", numeric);
-		for (int i = (int)strlen(buffer) - 1; i > 0 && buffer[i] == '0'; --i) {
-			buffer[i] = '\0';
-		}
-		if (buffer[strlen(buffer) - 1] == '.') {
-			buffer[strlen(buffer) - 1] = '\0';
-		}
-		setValue(node->name, buffer);
-	}
-	else if(node->value)
-	{
-		setValue(node->name,node->value);
-	}
-}
-else if(node->value)
-{
-	setValue(node->name,node->value);
-}
-
-break;
-
-case NODE_DECL:
-
-if(node->left)
-{
-	int ok = 0;
-	double numeric = evaluateNumeric(node->left, &ok);
-	if(ok)
-	{
-		char buffer[64];
-		snprintf(buffer, sizeof(buffer), "%.6f", numeric);
-		for (int i = (int)strlen(buffer) - 1; i > 0 && buffer[i] == '0'; --i) {
-			buffer[i] = '\0';
-		}
-		if (buffer[strlen(buffer) - 1] == '.') {
-			buffer[strlen(buffer) - 1] = '\0';
-		}
-		setValue(node->name, buffer);
-	}
-	else if(node->left->value)
-	{
-		setValue(node->name,node->left->value);
-	}
-}
-
-break;
-
-default:
-break;
-
-}
-
-execute(node->left);
-execute(node->right);
-if (node->elseBranch != NULL) {
-	execute(node->elseBranch);
-}
+    initialErrors = errorCount(); steps = 0; stepLimit = maxSteps; callDepth = 0;
+    initSymbolTable();
+    Flow flow = executeList(node && node->left ? node->left->left : NULL);
+    freeValue(&flow.value);
+    return healthy();
 }

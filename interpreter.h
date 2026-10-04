@@ -1,8 +1,6 @@
 #ifndef INTERPRETER_H
 #define INTERPRETER_H
-
 #include "ast.h"
 
-void execute(ASTNode* node);
-
+int execute(ASTNode* node, unsigned long maxSteps);
 #endif

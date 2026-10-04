@@ -1,0 +1,7 @@
+# Local environments and test/build artifacts
+.venv/
+__pycache__/
+*.pyc
+moviescript-sanitize
+*.dSYM/
+.DS_Store

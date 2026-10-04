@@ -5,7 +5,7 @@ FUNCTION @addOne(RATING @rating) RETURNS RATING FRAME
 RETURN @rating + 1
 ENDFRAME ENDFUNCTION
 
-RATING @result <- @addOne(9)
+RATING @result <- @addOne(4)
 PRINT @result
 
 ENDSCREENPLAY

@@ -1,0 +1,24 @@
+#ifndef MOVIESCRIPT_LIMITS_H
+#define MOVIESCRIPT_LIMITS_H
+
+/* Byte limits exclude the terminating NUL; identifier limit includes @. */
+#define MS_IDENTIFIER_MAX 63
+#define MS_STRING_MAX 2000
+#define MS_CHARACTER_MAX 100
+#define MS_SCENE_MAX 200
+#define MS_GENRE_MAX 50
+#define MS_NUMBER_TOKEN_MAX 128
+#define MS_COLLECTION_MAX 1000
+#define MS_PARAM_MAX 32
+#define MS_CALL_DEPTH_MAX 128
+#define MS_AST_DEPTH_MAX 128
+#define MS_AST_NODE_MAX 20000
+#define MS_SOURCE_MAX (1024 * 1024)
+#define MS_RATING_MIN 0.0
+#define MS_RATING_MAX 5.0
+#define MS_BUDGET_MAX 1000000000000.0
+#define MS_WHOLE_MIN (-2147483648.0)
+#define MS_WHOLE_MAX 2147483647.0
+#define MS_DEFAULT_STEPS 100000UL
+
+#endif

@@ -73,33 +73,37 @@
      REVIEW = 289,
      ANALYZE = 290,
      PRINT = 291,
-     BUILD_SUSPENSE = 292,
-     ENTER_STAGE = 293,
-     SUCCESS = 294,
-     FAILURE = 295,
-     BLOCKBUSTER = 296,
-     FLOP = 297,
-     AVERAGE = 298,
-     RISING = 299,
-     ASSIGN = 300,
-     PLUS = 301,
-     MINUS = 302,
-     STAR = 303,
-     SLASH = 304,
-     GREATER_THAN = 305,
-     GREATER_EQUAL = 306,
-     LESS_THAN = 307,
-     LESS_EQUAL = 308,
-     IS = 309,
-     IS_NOT = 310,
-     IDENTIFIER = 311,
-     NUMBER = 312,
-     STRING = 313,
-     LPAREN = 314,
-     RPAREN = 315,
-     LBRACE = 316,
-     RBRACE = 317,
-     COMMA = 318
+     ASSERT = 292,
+     BUILD_SUSPENSE = 293,
+     ENTER_STAGE = 294,
+     RISING = 295,
+     ASSIGN = 296,
+     PLUS = 297,
+     MINUS = 298,
+     STAR = 299,
+     SLASH = 300,
+     MOD = 301,
+     GREATER_THAN = 302,
+     GREATER_EQUAL = 303,
+     LESS_THAN = 304,
+     LESS_EQUAL = 305,
+     IS = 306,
+     IS_NOT = 307,
+     AND = 308,
+     OR = 309,
+     NOT = 310,
+     LPAREN = 311,
+     RPAREN = 312,
+     LBRACE = 313,
+     RBRACE = 314,
+     COMMA = 315,
+     INVALID = 316,
+     IDENTIFIER = 317,
+     NUMBER = 318,
+     STRING = 319,
+     LITERAL = 320,
+     BUILTIN = 321,
+     UMINUS = 322
    };
 #endif
 /* Tokens.  */
@@ -137,46 +141,47 @@
 #define REVIEW 289
 #define ANALYZE 290
 #define PRINT 291
-#define BUILD_SUSPENSE 292
-#define ENTER_STAGE 293
-#define SUCCESS 294
-#define FAILURE 295
-#define BLOCKBUSTER 296
-#define FLOP 297
-#define AVERAGE 298
-#define RISING 299
-#define ASSIGN 300
-#define PLUS 301
-#define MINUS 302
-#define STAR 303
-#define SLASH 304
-#define GREATER_THAN 305
-#define GREATER_EQUAL 306
-#define LESS_THAN 307
-#define LESS_EQUAL 308
-#define IS 309
-#define IS_NOT 310
-#define IDENTIFIER 311
-#define NUMBER 312
-#define STRING 313
-#define LPAREN 314
-#define RPAREN 315
-#define LBRACE 316
-#define RBRACE 317
-#define COMMA 318
+#define ASSERT 292
+#define BUILD_SUSPENSE 293
+#define ENTER_STAGE 294
+#define RISING 295
+#define ASSIGN 296
+#define PLUS 297
+#define MINUS 298
+#define STAR 299
+#define SLASH 300
+#define MOD 301
+#define GREATER_THAN 302
+#define GREATER_EQUAL 303
+#define LESS_THAN 304
+#define LESS_EQUAL 305
+#define IS 306
+#define IS_NOT 307
+#define AND 308
+#define OR 309
+#define NOT 310
+#define LPAREN 311
+#define RPAREN 312
+#define LBRACE 313
+#define RBRACE 314
+#define COMMA 315
+#define INVALID 316
+#define IDENTIFIER 317
+#define NUMBER 318
+#define STRING 319
+#define LITERAL 320
+#define BUILTIN 321
+#define UMINUS 322
 
 
 
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 14 "moviescript.y"
-{
-    ASTNode* node;
-    char* str;
-}
+#line 28 "moviescript.y"
+{ ASTNode* node; char* str; }
 /* Line 1529 of yacc.c.  */
-#line 180 "moviescript.tab.h"
+#line 185 "moviescript.tab.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
@@ -185,3 +190,17 @@ typedef union YYSTYPE
 
 extern YYSTYPE yylval;
 
+#if ! defined YYLTYPE && ! defined YYLTYPE_IS_DECLARED
+typedef struct YYLTYPE
+{
+  int first_line;
+  int first_column;
+  int last_line;
+  int last_column;
+} YYLTYPE;
+# define yyltype YYLTYPE /* obsolescent; will be withdrawn */
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
+#endif
+
+extern YYLTYPE yylloc;

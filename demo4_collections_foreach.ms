@@ -1,11 +1,11 @@
 OPENING_CREDITS
 SCREENPLAY
 
-SCENE @scene
+SCENE @scene <- "Premiere"
 GENRE_COLLECTION @genres <- {"Action","Drama"}
 ADD_TO @genres "Comedy"
 
-FOR_EACH_SCENE IN @movie REEL
+FOR_EACH_SCENE IN @genres REEL
 ANALYZE @scene
 PRINT "Scene analyzed"
 ENDREEL

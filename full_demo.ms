@@ -1,16 +1,16 @@
 OPENING_CREDITS
 SCREENPLAY
 
-CHARACTER @hero
-SCENE @intro
-SCENE @scene
-DIALOGUE @line
+CHARACTER @hero <- "Ava"
+SCENE @intro <- "Opening scene"
+SCENE @scene <- "Premiere"
+DIALOGUE @line <- "Welcome"
 
 FUNCTION @scoreMovie(RATING @rating) RETURNS RATING FRAME
 RETURN @rating + 1
 ENDFRAME ENDFUNCTION
 
-RATING @rating <- @scoreMovie(5 + 3)
+RATING @rating <- @scoreMovie(2 + 1)
 BUDGET @budget <- 5000000
 
 GENRE_COLLECTION @genres <- {"Action","Drama"}
@@ -19,20 +19,20 @@ ADD_TO @genres "Comedy"
 PRINT @rating
 PRINT "Rating printed above"
 
-SCENE_IF (@rating GREATER_THAN 8) FRAME
+SCENE_IF (@rating GREATER_THAN 3) FRAME
 AWARD "Excellent Film"
 ENDFRAME
 OTHERWISE FRAME
 REVIEW "Needs Improvement"
 ENDFRAME
 
-FOR_EACH_SCENE IN @movie REEL
+FOR_EACH_SCENE IN @genres REEL
 ANALYZE @scene
 PRINT "Scene analyzed"
 ENDREEL
 
-WHILE (@rating GREATER_THAN 8) TAKE
-@rating <- 7
+WHILE (@rating GREATER_THAN 3) TAKE
+@rating <- 3
 BUILD_SUSPENSE
 PRINT @rating
 ENDTAKE
